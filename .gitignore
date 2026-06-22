@@ -1,0 +1,8 @@
+.env
+.kakao_token.json
+__pycache__/
+*.pyc
+predictions_log.json
+reports/
+scorecards/
+run_log.txt
