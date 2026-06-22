@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: stock-agent-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn dashboard:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DASHBOARD_URL
+        sync: false          # Render 대시보드에서 직접 입력
+      - key: KAKAO_REST_API_KEY
+        sync: false          # Render 대시보드에서 직접 입력
