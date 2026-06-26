@@ -222,6 +222,16 @@ else:
                 st.metric("30일 수익률",
                           f"{r30d:+.2f}%" if r30d is not None else "대기중")
 
+            # ── 선정 배경/사유 ────────────────────────────
+            if pick.get("selection_reason"):
+                st.markdown("**📋 선정 배경 및 사유**")
+                reasons = pick["selection_reason"].split(" | ")
+                for r in reasons:
+                    st.markdown(f"- {r}")
+
+            if pick.get("headline"):
+                st.caption(f"📰 핵심 뉴스: {pick['headline']}")
+
             if pick.get("ai_feedback"):
                 st.info(f"🤖 AI 복기: {pick['ai_feedback']}")
 

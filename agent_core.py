@@ -16,13 +16,35 @@ import os
 import datetime
 import random
 from dataclasses import asdict
+from dotenv import load_dotenv
 
-from skills import (
-    StockMomentum, SupplyDemand, ThemeNews,
-    fetch_market_momentum,
-    analyze_supply_demand,
-    scan_theme_news,
-)
+load_dotenv()
+
+# ── 실제 데이터 / 시뮬레이션 모드 자동 전환 ──────────────
+# .env 파일에서 USE_REAL_API=true 로 설정하면 실제 데이터 사용
+USE_REAL_API = os.getenv("USE_REAL_API", "false").lower() == "true"
+
+if USE_REAL_API:
+    try:
+        from skills_real import (
+            StockMomentum, SupplyDemand, ThemeNews,
+            fetch_market_momentum,
+            analyze_supply_demand,
+            scan_theme_news,
+        )
+        print("✅ 실제 데이터 모드 (pykrx + 네이버 증권)")
+    except ImportError as e:
+        print(f"⚠ skills_real 로드 실패 ({e}) → 시뮬레이션 모드로 전환")
+        USE_REAL_API = False
+
+if not USE_REAL_API:
+    from skills import (
+        StockMomentum, SupplyDemand, ThemeNews,
+        fetch_market_momentum,
+        analyze_supply_demand,
+        scan_theme_news,
+    )
+    print("ℹ 시뮬레이션 데이터 모드")
 
 # 예측 기록 저장 경로
 PREDICTIONS_FILE = "predictions_log.json"
@@ -304,6 +326,62 @@ def run_stress_test(
     return scenarios
 
 
+
+# ══════════════════════════════════════════════════════════
+# 선정 배경/사유 자동 생성
+# ══════════════════════════════════════════════════════════
+
+def _build_selection_reason(
+    stock, sd, tn, score: float
+) -> str:
+    """
+    수급·기술·재료 3가지 관점에서 종목 선정 배경을 자동 생성.
+    """
+    parts = []
+
+    # ① 수급 근거
+    if sd.foreign_net > 0 and sd.institution_net > 0:
+        parts.append(
+            f"외국인({sd.foreign_net:+,}주)·기관({sd.institution_net:+,}주) 동반 순매수로 "
+            f"세력 수급 유입 확인"
+        )
+    elif sd.foreign_net > 0:
+        days = f" {sd.foreign_consecutive_days}일 연속" if sd.foreign_consecutive_days > 1 else ""
+        parts.append(f"외국인{days} 순매수({sd.foreign_net:+,}주) 지속 — 중장기 수급 우위")
+    elif sd.institution_net > 0:
+        parts.append(f"기관 순매수({sd.institution_net:+,}주) — {sd.inst_type} 중심 매집 포착")
+
+    # ② 기술적 근거
+    rsi = stock.rsi_14
+    if rsi <= 35:
+        parts.append(f"RSI {rsi} → 과매도 구간 진입, 단기 반등 가능성 높음")
+    elif rsi <= 50:
+        parts.append(f"RSI {rsi} → 중립~저평가 구간, 추가 상승 여력 존재")
+    elif rsi <= 65:
+        parts.append(f"RSI {rsi} → 건강한 상승 추세 유지 중")
+
+    if stock.is_5day_high:
+        parts.append(f"거래대금 5일 내 최고 갱신({stock.volume_today:,}억) — 단기 주도주 가능성")
+
+    # ③ 재료 근거
+    persist_map = {"장기": "6개월 이상 지속 가능", "중기": "2~3개월 유효", "단기": "단기 이벤트성"}
+    parts.append(
+        f"테마: {tn.theme} / 재료유형: {tn.material_type} "
+        f"({persist_map.get(tn.theme_persistence, '')})"
+    )
+    if tn.headline and not tn.headline.startswith("[주의]"):
+        parts.append(f"핵심 뉴스: {tn.headline[:60]}{'...' if len(tn.headline) > 60 else ''}")
+
+    # ④ 종합 점수 평가
+    if score >= 7.5:
+        parts.append(f"모멘텀 종합 점수 {score}/10 — 강력 추천 구간")
+    elif score >= 6.5:
+        parts.append(f"모멘텀 종합 점수 {score}/10 — 매수 검토 적합")
+    else:
+        parts.append(f"모멘텀 종합 점수 {score}/10 — 관망 후 진입 고려")
+
+    return " | ".join(parts)
+
 # ══════════════════════════════════════════════════════════
 # 5. 예측 저장 (validate_predictions.py 연동용)
 # ══════════════════════════════════════════════════════════
@@ -326,6 +404,7 @@ def save_predictions(
     entries = []
     for stock, sd, tn, score in final_list:
         scenario = generate_trading_scenario(stock, score)
+        reason = _build_selection_reason(stock, sd, tn, score)
         entries.append({
             "code":              stock.code,
             "name":              stock.name,
@@ -341,6 +420,8 @@ def save_predictions(
             "entry_range":       scenario["entry_range"],
             "stop_loss":         scenario["stop_loss"],
             "target":            scenario["target"],
+            "selection_reason":  reason,
+            "headline":          tn.headline,
             # 추후 validate_predictions.py가 채워 넣는 필드
             "actual_close_1d":   None,
             "actual_close_7d":   None,
@@ -348,7 +429,7 @@ def save_predictions(
             "return_1d_pct":     None,
             "return_7d_pct":     None,
             "return_30d_pct":    None,
-            "verdict":           None,   # HIT / MISS / PARTIAL
+            "verdict":           None,
             "ai_feedback":       None,
         })
 
@@ -455,3 +536,4 @@ def run_agent(
 if __name__ == "__main__":
     report = run_agent(save_report=True, run_stress=True, top_k=5)
     print(report)
+

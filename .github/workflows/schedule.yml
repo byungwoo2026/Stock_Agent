@@ -1,0 +1,71 @@
+name: AI 주식 에이전트 자동 실행
+
+on:
+  schedule:
+    # 한국 시간 기준 (UTC+9)
+    # 아침 8:50 KST = UTC 23:50 (전날)
+    - cron: '50 23 * * 0-4'
+    # 저녁 4:30 KST = UTC 07:30
+    - cron: '30 7 * * 1-5'
+
+  # 수동 실행 (GitHub 웹에서 직접 실행 가능)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 모드 (evening/morning/all)'
+        required: true
+        default: 'evening'
+        type: choice
+        options:
+          - evening
+          - morning
+          - all
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: |
+          pip install requests beautifulsoup4 pandas numpy python-dotenv streamlit
+
+      - name: 실행 모드 결정
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+          elif [ "$(date -u +%H)" = "23" ]; then
+            echo "mode=morning" >> $GITHUB_OUTPUT
+          else
+            echo "mode=evening" >> $GITHUB_OUTPUT
+          fi
+
+      - name: AI 에이전트 실행
+        env:
+          EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          EMAIL_RECIPIENT:    ${{ secrets.EMAIL_RECIPIENT }}
+          DASHBOARD_URL:      ${{ secrets.DASHBOARD_URL }}
+          USE_REAL_API:       "true"
+          FLASK_ENV:          "production"
+        run: |
+          python run_agent.py --mode ${{ steps.mode.outputs.mode }}
+
+      - name: 결과 자동 커밋 & 푸시
+        run: |
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "Stock Agent Bot"
+          git add predictions_log.json reports/ || true
+          git diff --staged --quiet || git commit -m "자동 업데이트: $(date '+%Y-%m-%d %H:%M KST')"
+          git push || true
