@@ -5,6 +5,13 @@ dashboard.py — 주식 에이전트 웹 대시보드 (Flask)
 배포: Render.com 에 그대로 push → 자동 배포
 """
 
+import sys
+# Windows CP949 인코딩 에러 방지용 UTF-8 설정
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import json
 import os
 import datetime
@@ -146,6 +153,130 @@ HTML = """
                   border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 12px;
                   color: var(--muted); margin-top: 6px; }
 
+  /* 메인 행 & 상세 행 */
+  .main-row { cursor: pointer; transition: background 0.2s; }
+  .main-row:hover td { background: var(--card2) !important; }
+  .detail-row td { background: #131625 !important; border-top: none !important; }
+  
+  /* 상세 보기 화살표 회전 */
+  .toggle-icon { display: inline-block; transition: transform 0.2s; color: var(--muted); font-size: 10px; }
+  .main-row.expanded .toggle-icon { transform: rotate(180deg); color: var(--accent); }
+
+  /* 상세 컨테이너 */
+  .detail-container {
+    padding: 20px;
+    border-radius: 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    animation: fadeIn 0.25s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 상세 그리드 */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 768px) {
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+
+  /* 상세 카드 */
+  .detail-card {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .detail-card h4 {
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .detail-card-content {
+    font-size: 12px;
+    color: #cbd5e1;
+    line-height: 1.6;
+  }
+
+  /* 배지 그룹 */
+  .badge-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .badge-theme-detail { background: #1e1b4b; color: #a5b4fc; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+  .badge-mat-detail { background: #064e3b; color: #6ee7b7; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+  .badge-pers-detail { background: #7c2d12; color: #ffedd5; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+
+  /* 수급 현황 리스트 */
+  .supply-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .supply-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .supply-item:last-child { border-bottom: none; }
+
+  /* 상세 선정 이유 박스 */
+  .reason-box-new {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 14px;
+  }
+  .reason-box-new h4 {
+    font-size: 13px;
+    color: var(--green);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .reason-list-new {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .reason-item-new {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #cbd5e1;
+    line-height: 1.5;
+  }
+  .reason-item-new .dot { color: var(--green); font-size: 12px; flex-shrink: 0; }
+
+  /* AI 피드백 박스 */
+  .feedback-box-new {
+    background: #1e1b4b;
+    border-left: 4px solid var(--purple);
+    border-radius: 4px 8px 8px 4px;
+    padding: 12px 16px;
+    font-size: 12.5px;
+    color: #e0e7ff;
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+
+
   /* 날짜 탭 */
   .date-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
   .date-tab { padding: 5px 14px; border-radius: 99px; font-size: 12px; cursor: pointer;
@@ -222,12 +353,12 @@ HTML = """
       <thead>
         <tr>
           <th>#</th><th>종목</th><th>테마</th><th>모멘텀 점수</th>
-          <th>진입 구간</th><th>손절선</th><th>목표가</th><th>판정</th>
+          <th>진입 구간</th><th>손절선</th><th>목표가</th><th>판정</th><th style="width:60px;text-align:center;">상세</th>
         </tr>
       </thead>
       <tbody>
         {% for pick in latest_picks %}
-        <tr>
+        <tr class="main-row" onclick="toggleDetail('latest-detail-{{ loop.index }}', this)">
           <td style="color:var(--muted)">{{ loop.index }}</td>
           <td>
             <strong>{{ pick.name }}</strong><br>
@@ -256,14 +387,73 @@ HTML = """
               <span class="badge badge-pending">대기중</span>
             {% endif %}
           </td>
+          <td style="text-align: center;"><span class="toggle-icon">▼</span></td>
         </tr>
-        {% if pick.ai_feedback %}
-        <tr>
-          <td colspan="8" style="padding:0 16px 12px">
-            <div class="feedback-box">🤖 AI 복기: {{ pick.ai_feedback }}</div>
+        <tr id="latest-detail-{{ loop.index }}" class="detail-row" style="display: none;">
+          <td colspan="9" style="padding: 16px 20px;">
+            <div class="detail-container">
+              <div class="detail-grid">
+                <!-- 📰 재료 및 뉴스 -->
+                <div class="detail-card">
+                  <h4>📰 재료 및 뉴스 분석</h4>
+                  <div class="detail-card-content">
+                    {% if pick.headline %}
+                      <strong>핵심 뉴스:</strong> {{ pick.headline }}
+                    {% else %}
+                      <span style="color:var(--muted)">뉴스 정보 없음</span>
+                    {% endif %}
+                  </div>
+                  <div class="badge-group">
+                    <span class="badge-theme-detail">테마: {{ pick.theme or '-' }}</span>
+                    <span class="badge-mat-detail">재료유형: {{ pick.material_type or '-' }}</span>
+                    <span class="badge-pers-detail">지속성: {{ pick.theme_persistence or '-' }}</span>
+                  </div>
+                </div>
+                <!-- 📊 세력 수급 해석 -->
+                <div class="detail-card">
+                  <h4>📊 세력 수급 현황</h4>
+                  <div class="supply-list">
+                    <div class="supply-item">
+                      <span>외국인 순매매</span>
+                      <strong class="{% if pick.foreign_net is not none and pick.foreign_net >= 0 %}green{% else %}red{% endif %}">
+                        {{ "{:+,}".format(pick.foreign_net) if pick.foreign_net is not none else '-' }}{{ '주' if (pick.foreign_net and pick.foreign_net|abs > 2000) else '억' if pick.foreign_net is not none else '' }}
+                      </strong>
+                    </div>
+                    <div class="supply-item">
+                      <span>기관 순매매</span>
+                      <strong class="{% if pick.institution_net is not none and pick.institution_net >= 0 %}green{% else %}red{% endif %}">
+                        {{ "{:+,}".format(pick.institution_net) if pick.institution_net is not none else '-' }}{{ '주' if (pick.institution_net and pick.institution_net|abs > 2000) else '억' if pick.institution_net is not none else '' }}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- ✦ 상세 선정 배경 -->
+              {% if pick.selection_reason %}
+                <div class="reason-box-new">
+                  <h4>✦ 상세 분석 요약</h4>
+                  <ul class="reason-list-new">
+                    {% for item in pick.selection_reason.split(' | ') %}
+                      <li class="reason-item-new"><span class="dot">✦</span><span>{{ item }}</span></li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% else %}
+                <div class="reason-box-new" style="border-left-color: var(--muted);">
+                  <p style="font-size:12px; color:var(--muted); margin:0;">선정 사유 정보가 없습니다. (과거 데이터)</p>
+                </div>
+              {% endif %}
+              
+              <!-- 🤖 AI 복기 피드백 -->
+              {% if pick.ai_feedback %}
+                <div class="feedback-box-new">
+                  <strong>🤖 AI 복기:</strong> {{ pick.ai_feedback }}
+                </div>
+              {% endif %}
+            </div>
           </td>
         </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -332,6 +522,21 @@ new Chart(document.getElementById('verdictChart'), {
   }
 });
 
+// ── 상세 행 토글 ──────────────────────────────────────
+function toggleDetail(id, row) {
+  const detailRow = document.getElementById(id);
+  if (!detailRow) return;
+  
+  const isCollapsed = detailRow.style.display === 'none';
+  if (isCollapsed) {
+    detailRow.style.display = 'table-row';
+    row.classList.add('expanded');
+  } else {
+    detailRow.style.display = 'none';
+    row.classList.remove('expanded');
+  }
+}
+
 // ── 날짜별 히스토리 테이블 ────────────────────────────
 const allLog = {{ all_log | tojson }};
 
@@ -350,8 +555,50 @@ function showDate(date, btn) {
       '<p style="color:var(--muted);padding:20px">데이터 없음</p>';
     return;
   }
-  const rows = entries.map(e => `
-    <tr>
+  const rows = entries.map((e, idx) => {
+    // 수급 데이터 포맷팅
+    const fNet = e.foreign_net !== undefined && e.foreign_net !== null
+      ? (e.foreign_net > 0 ? '+' : '') + Number(e.foreign_net).toLocaleString() + (Math.abs(e.foreign_net) > 2000 ? '주' : '억')
+      : '-';
+    const iNet = e.institution_net !== undefined && e.institution_net !== null
+      ? (e.institution_net > 0 ? '+' : '') + Number(e.institution_net).toLocaleString() + (Math.abs(e.institution_net) > 2000 ? '주' : '억')
+      : '-';
+      
+    const fClass = (e.foreign_net || 0) >= 0 ? 'green' : 'red';
+    const iClass = (e.institution_net || 0) >= 0 ? 'green' : 'red';
+
+    // 뉴스 표시
+    const newsHtml = e.headline
+      ? `<div class="detail-card-content"><strong>핵심 뉴스:</strong> ${e.headline}</div>`
+      : '<div class="detail-card-content" style="color:var(--muted)">뉴스 정보 없음</div>';
+
+    // 선정 사유 표시
+    let reasonsHtml = '';
+    if (e.selection_reason) {
+      const items = e.selection_reason.split(' | ');
+      reasonsHtml = `
+        <div class="reason-box-new">
+          <h4>✦ 상세 분석 요약</h4>
+          <ul class="reason-list-new">
+            ${items.map(item => `<li class="reason-item-new"><span class="dot">✦</span><span>${item}</span></li>`).join('')}
+          </ul>
+        </div>
+      `;
+    } else {
+      reasonsHtml = `
+        <div class="reason-box-new" style="border-left-color: var(--muted);">
+          <p style="font-size:12px; color:var(--muted); margin:0;">선정 사유 정보가 없습니다. (과거 데이터)</p>
+        </div>
+      `;
+    }
+
+    // AI 피드백
+    const feedbackHtml = e.ai_feedback
+      ? `<div class="feedback-box-new"><strong>🤖 AI 복기:</strong> ${e.ai_feedback}</div>`
+      : '';
+
+    return `
+    <tr class="main-row" onclick="toggleDetail('history-detail-${idx}', this)">
       <td><strong>${e.name}</strong><br><span style="font-size:11px;color:var(--muted)">${e.code}</span></td>
       <td><span class="badge badge-buy">${e.theme||'-'}</span></td>
       <td style="font-weight:700">${e.momentum_score}/10</td>
@@ -359,16 +606,50 @@ function showDate(date, btn) {
       <td style="color:${(e.return_7d_pct||0)>=0?'var(--green)':'var(--red)'}">${e.return_7d_pct!=null?(e.return_7d_pct>=0?'+':'')+e.return_7d_pct+'%':'-'}</td>
       <td style="color:${(e.return_30d_pct||0)>=0?'var(--green)':'var(--red)'}">${e.return_30d_pct!=null?(e.return_30d_pct>=0?'+':'')+e.return_30d_pct+'%':'-'}</td>
       <td>${verdictBadge(e.verdict)}</td>
+      <td style="text-align: center;"><span class="toggle-icon">▼</span></td>
     </tr>
-    ${e.ai_feedback ? `<tr><td colspan="7" style="padding:0 0 12px"><div class="feedback-box">🤖 ${e.ai_feedback}</div></td></tr>` : ''}
-  `).join('');
+    <tr id="history-detail-${idx}" class="detail-row" style="display: none;">
+      <td colspan="8" style="padding: 16px 20px;">
+        <div class="detail-container">
+          <div class="detail-grid">
+            <!-- 📰 재료 및 뉴스 -->
+            <div class="detail-card">
+              <h4>📰 재료 및 뉴스 분석</h4>
+              ${newsHtml}
+              <div class="badge-group">
+                <span class="badge-theme-detail">테마: ${e.theme||'-'}</span>
+                <span class="badge-mat-detail">재료유형: ${e.material_type||'-'}</span>
+                <span class="badge-pers-detail">지속성: ${e.theme_persistence||'-'}</span>
+              </div>
+            </div>
+            <!-- 📊 세력 수급 해석 -->
+            <div class="detail-card">
+              <h4>📊 세력 수급 현황</h4>
+              <div class="supply-list">
+                <div class="supply-item">
+                  <span>외국인 순매매</span>
+                  <strong class="${fClass}">${fNet}</strong>
+                </div>
+                <div class="supply-item">
+                  <span>기관 순매매</span>
+                  <strong class="${iClass}">${iNet}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+          ${reasonsHtml}
+          ${feedbackHtml}
+        </div>
+      </td>
+    </tr>
+  `;}).join('');
 
   document.getElementById('historyTable').innerHTML = `
     <div class="picks-card">
       <table>
         <thead><tr>
           <th>종목</th><th>테마</th><th>점수</th>
-          <th>1일 수익</th><th>7일 수익</th><th>30일 수익</th><th>판정</th>
+          <th>1일 수익</th><th>7일 수익</th><th>30일 수익</th><th>판정</th><th style="width:60px;text-align:center;">상세</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>

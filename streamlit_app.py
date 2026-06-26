@@ -50,6 +50,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ── 세력 수급 포맷팅 헬퍼 ─────────────────────────────
+def format_net_buying(val):
+    if val is None:
+        return "-"
+    abs_val = abs(val)
+    unit = "주" if abs_val > 2000 else "억"
+    sign = "+" if val > 0 else ""
+    return f"{sign}{val:,}{unit}"
+
+
 # ══════════════════════════════════════════════════════════
 # 데이터 로드
 # ══════════════════════════════════════════════════════════
@@ -222,18 +232,75 @@ else:
                 st.metric("30일 수익률",
                           f"{r30d:+.2f}%" if r30d is not None else "대기중")
 
-            # ── 선정 배경/사유 ────────────────────────────
+            # ── 3단계: 재료 및 수급 상세 분석 ───────────────────
+            st.write("")
+            col_g, col_h = st.columns(2)
+            with col_g:
+                st.markdown("#### 📰 재료 및 뉴스 분석")
+                if pick.get("headline"):
+                    st.markdown(f"**핵심 뉴스:**\n> {pick['headline']}")
+                else:
+                    st.markdown("*뉴스 정보 없음*")
+                
+                # 배지 그룹 표시
+                theme_str = pick.get("theme", "-")
+                mat_str = pick.get("material_type", "-")
+                pers_str = pick.get("theme_persistence", "-")
+                st.markdown(
+                    f"<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;'>"
+                    f"<span class='badge badge-buy' style='background:#1e1b4b;color:#a5b4fc;border-radius:4px;'>테마: {theme_str}</span>"
+                    f"<span class='badge badge-buy' style='background:#064e3b;color:#6ee7b7;border-radius:4px;'>재료유형: {mat_str}</span>"
+                    f"<span class='badge badge-buy' style='background:#7c2d12;color:#ffedd5;border-radius:4px;'>지속성: {pers_str}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            with col_h:
+                st.markdown("#### 📊 세력 수급 현황")
+                f_net = pick.get("foreign_net")
+                i_net = pick.get("institution_net")
+                
+                f_str = format_net_buying(f_net)
+                i_str = format_net_buying(i_net)
+                
+                f_color = "#22c55e" if (f_net or 0) >= 0 else "#ef4444"
+                i_color = "#22c55e" if (i_net or 0) >= 0 else "#ef4444"
+                
+                st.markdown(
+                    f"<div style='background:#1a1d2e; border:1px solid #2e3150; border-radius:8px; padding:12px; font-size:13px;'>"
+                    f"<div style='display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px dashed #2e3150; padding-bottom:6px;'>"
+                    f"<span>외국인 순매매</span><strong style='color:{f_color};'>{f_str}</strong>"
+                    f"</div>"
+                    f"<div style='display:flex; justify-content:space-between;'>"
+                    f"<span>기관 순매매</span><strong style='color:{i_color};'>{i_str}</strong>"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+            # ── 4단계: 상세 선정 배경 ───────────────────────────
+            st.write("")
+            st.markdown("#### ✦ 상세 분석 요약")
             if pick.get("selection_reason"):
-                st.markdown("**📋 선정 배경 및 사유**")
                 reasons = pick["selection_reason"].split(" | ")
-                for r in reasons:
-                    st.markdown(f"- {r}")
+                reason_items = "".join(f"<div style='display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#cbd5e1;line-height:1.6;margin-bottom:6px;'><span style='color:#22c55e;'>✦</span><span>{r}</span></div>" for r in reasons)
+                st.markdown(
+                    f"<div style='background:#131625; border:1px solid #2e3150; border-radius:8px; padding:14px 16px;'>"
+                    f"{reason_items}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    f"<div style='background:#131625; border:1px solid #2e3150; border-radius:8px; padding:14px 16px; color:#8892a4; font-size:12px;'>"
+                    f"선정 사유 정보가 없습니다. (과거 데이터)"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
-            if pick.get("headline"):
-                st.caption(f"📰 핵심 뉴스: {pick['headline']}")
-
+            # ── 5단계: AI 피드백 ────────────────────────────────
             if pick.get("ai_feedback"):
-                st.info(f"🤖 AI 복기: {pick['ai_feedback']}")
+                st.write("")
+                st.info(f"🤖 **AI 복기:** {pick['ai_feedback']}")
 
 st.divider()
 
@@ -253,21 +320,91 @@ else:
             verdict = e.get("verdict", "대기중")
             icon    = {"HIT": "🟢", "PARTIAL": "🟡", "MISS": "🔴"}.get(verdict, "⚪")
             rows.append({
-                "종목":       f"{e['name']} ({e['code']})",
-                "테마":       e.get("theme", "-"),
-                "점수":       e.get("momentum_score", 0),
-                "1일 수익":   f"{e['return_1d_pct']:+.2f}%" if e.get("return_1d_pct") is not None else "-",
-                "7일 수익":   f"{e['return_7d_pct']:+.2f}%" if e.get("return_7d_pct") is not None else "-",
-                "30일 수익":  f"{e['return_30d_pct']:+.2f}%" if e.get("return_30d_pct") is not None else "-",
-                "판정":       f"{icon} {verdict}",
+                "종목":           f"{e['name']} ({e['code']})",
+                "테마":           e.get("theme", "-"),
+                "점수":           e.get("momentum_score", 0),
+                "1일 수익":       f"{e['return_1d_pct']:+.2f}%" if e.get("return_1d_pct") is not None else "-",
+                "7일 수익":       f"{e['return_7d_pct']:+.2f}%" if e.get("return_7d_pct") is not None else "-",
+                "30일 수익":      f"{e['return_30d_pct']:+.2f}%" if e.get("return_30d_pct") is not None else "-",
+                "판정":           f"{icon} {verdict}",
+                "선정 배경/사유": e.get("selection_reason", "-") or "-",
             })
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-        # AI 피드백 표시
+        # 선정 사유 + AI 피드백 상세 표시
         for e in entries:
-            if e.get("ai_feedback"):
-                st.warning(f"🤖 **{e['name']}** AI 복기: {e['ai_feedback']}")
+            has_reason   = bool(e.get("selection_reason"))
+            has_feedback = bool(e.get("ai_feedback"))
+            if has_reason or has_feedback:
+                with st.expander(f"📋 {e['name']} ({e['code']}) — 상세 분석 정보"):
+                    # 3단계: 재료 및 수급 상세 분석
+                    col_g, col_h = st.columns(2)
+                    with col_g:
+                        st.markdown("#### 📰 재료 및 뉴스 분석")
+                        if e.get("headline"):
+                            st.markdown(f"**핵심 뉴스:**\n> {e['headline']}")
+                        else:
+                            st.markdown("*뉴스 정보 없음*")
+                        
+                        theme_str = e.get("theme", "-")
+                        mat_str = e.get("material_type", "-")
+                        pers_str = e.get("theme_persistence", "-")
+                        st.markdown(
+                            f"<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;'>"
+                            f"<span class='badge badge-buy' style='background:#1e1b4b;color:#a5b4fc;border-radius:4px;'>테마: {theme_str}</span>"
+                            f"<span class='badge badge-buy' style='background:#064e3b;color:#6ee7b7;border-radius:4px;'>재료유형: {mat_str}</span>"
+                            f"<span class='badge badge-buy' style='background:#7c2d12;color:#ffedd5;border-radius:4px;'>지속성: {pers_str}</span>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    with col_h:
+                        st.markdown("#### 📊 세력 수급 현황")
+                        f_net = e.get("foreign_net")
+                        i_net = e.get("institution_net")
+                        
+                        f_str = format_net_buying(f_net)
+                        i_str = format_net_buying(i_net)
+                        
+                        f_color = "#22c55e" if (f_net or 0) >= 0 else "#ef4444"
+                        i_color = "#22c55e" if (i_net or 0) >= 0 else "#ef4444"
+                        
+                        st.markdown(
+                            f"<div style='background:#1a1d2e; border:1px solid #2e3150; border-radius:8px; padding:12px; font-size:13px;'>"
+                            f"<div style='display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px dashed #2e3150; padding-bottom:6px;'>"
+                            f"<span>외국인 순매매</span><strong style='color:{f_color};'>{f_str}</strong>"
+                            f"</div>"
+                            f"<div style='display:flex; justify-content:space-between;'>"
+                            f"<span>기관 순매매</span><strong style='color:{i_color};'>{i_str}</strong>"
+                            f"</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+
+                    # 4단계: 상세 선정 배경
+                    st.write("")
+                    st.markdown("#### ✦ 상세 분석 요약")
+                    if e.get("selection_reason"):
+                        reasons = e["selection_reason"].split(" | ")
+                        reason_items = "".join(f"<div style='display:flex;align-items:flex-start;gap:8px;font-size:13px;color:#cbd5e1;line-height:1.6;margin-bottom:6px;'><span style='color:#22c55e;'>✦</span><span>{r}</span></div>" for r in reasons)
+                        st.markdown(
+                            f"<div style='background:#131625; border:1px solid #2e3150; border-radius:8px; padding:14px 16px;'>"
+                            f"{reason_items}"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown(
+                            f"<div style='background:#131625; border:1px solid #2e3150; border-radius:8px; padding:14px 16px; color:#8892a4; font-size:12px;'>"
+                            f"선정 사유 정보가 없습니다. (과거 데이터)"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+
+                    # 5단계: AI 피드백
+                    if e.get("ai_feedback"):
+                        st.write("")
+                        st.info(f"🤖 **AI 복기:** {e['ai_feedback']}")
     else:
         st.info("해당 날짜 데이터 없음")
 
