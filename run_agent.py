@@ -13,10 +13,16 @@ Task Scheduler / cron 에서 이 파일 하나만 호출하면 됩니다.
     python run_agent.py --mode all
 """
 
+import sys
+# Windows CP949 인코딩 에러 방지용 UTF-8 설정
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import argparse
 import datetime
 import os
-import sys
 import json
 from pathlib import Path
 from dotenv import load_dotenv

@@ -13,6 +13,13 @@ validate_predictions.py — 예측 추적 + AI 자가 피드백 복기 시스템
   python validate_predictions.py
 """
 
+import sys
+# Windows CP949 인코딩 에러 방지용 UTF-8 설정
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import json
 import os
 import random
