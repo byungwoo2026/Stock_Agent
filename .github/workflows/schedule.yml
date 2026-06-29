@@ -2,13 +2,8 @@ name: AI 주식 에이전트 자동 실행
 
 on:
   schedule:
-    # 한국 시간 기준 (UTC+9)
-    # 아침 8:50 KST = UTC 23:50 (전날)
-    - cron: '50 23 * * 0-4'
-    # 저녁 4:30 KST = UTC 07:30
-    - cron: '30 7 * * 1-5'
-
-  # 수동 실행 (GitHub 웹에서 직접 실행 가능)
+    - cron: '50 23 * * 0-4'   # 한국시간 오전 8:50 (UTC 23:50)
+    - cron: '30 7 * * 1-5'    # 한국시간 오후 4:30 (UTC 07:30)
   workflow_dispatch:
     inputs:
       mode:
@@ -21,6 +16,10 @@ on:
           - morning
           - all
 
+# ── push 권한 추가 (자동 커밋용) ──────────────────────────
+permissions:
+  contents: write
+
 jobs:
   run-agent:
     runs-on: ubuntu-latest
@@ -30,6 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Python 3.11 설정
         uses: actions/setup-python@v5
@@ -43,9 +43,10 @@ jobs:
       - name: 실행 모드 결정
         id: mode
         run: |
+          HOUR=$(date -u +%H)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
-          elif [ "$(date -u +%H)" = "23" ]; then
+          elif [ "$HOUR" = "23" ]; then
             echo "mode=morning" >> $GITHUB_OUTPUT
           else
             echo "mode=evening" >> $GITHUB_OUTPUT
@@ -67,5 +68,9 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "Stock Agent Bot"
           git add predictions_log.json reports/ || true
-          git diff --staged --quiet || git commit -m "자동 업데이트: $(date '+%Y-%m-%d %H:%M KST')"
-          git push || true
+          if git diff --staged --quiet; then
+            echo "변경사항 없음 — 커밋 생략"
+          else
+            git commit -m "자동 업데이트: $(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')"
+            git push origin main
+          fi
